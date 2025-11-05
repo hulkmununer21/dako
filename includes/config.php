@@ -2,12 +2,12 @@
 // config.php
 
 // Base URL of the project
-define('BASE_URL', 'https://domus-api.shop/');
+define('BASE_URL', 'http://localhost/');
 
 // Database credentials
 define('DB_HOST', 'localhost');
 define('DB_USER', 'u101767000_dako_db');
-define('DB_PASS', '5dHqMaJ3>');
+define('DB_PASS', '5dHqMaJ3');
 define('DB_NAME', 'u101767000_dako_college');
 
 // Site info

@@ -40,10 +40,10 @@ require_once '../includes/functions.php';
     <p><strong>Full Name:</strong> <span id="name"></span></p>
     <p><strong>JAMB No:</strong> <span id="enteredJambNo"></span></p>
     <p><strong>Score:</strong> <span id="score"></span></p>
-    <button onclick="goToLogin()">Proceed to Login</button>
+    <button id="proceedBtn" onclick="goToLogin()">Proceed to Login</button>
   </div>
 
-  <!-- STEP 3: LOGIN -->
+  <!-- (optional) STEP 3: inline login kept for convenience but not used when redirecting -->
   <div id="step3" class="step">
     <h3>Admission Portal Login</h3>
     <input type="text" id="loginJamb" readonly />
@@ -51,7 +51,7 @@ require_once '../includes/functions.php';
     <button onclick="loginPortal()">Login</button>
   </div>
 
-  <!-- STEP 4: DASHBOARD -->
+  <!-- STEP 4: DASHBOARD (demo) -->
   <div id="step4" class="step portal">
     <h3>Welcome to Your Admission Portal</h3>
     <p><strong>Candidate:</strong> <span id="portalName"></span></p>
@@ -67,24 +67,28 @@ require_once '../includes/functions.php';
 </div>
 
 <script>
+let currentJambNo = '';
+
 function checkEligibility() {
   const jambNo = document.getElementById('jambNo').value.trim();
   if (!jambNo) { alert("Please enter your JAMB Number."); return; }
 
-  // AJAX request
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', './ajax/fetch_candidate.php', true);
+  xhr.open('POST', '../ajax/fetch_candidate.php', true);
   xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
   xhr.onload = function() {
     if (this.status === 200) {
-      const res = JSON.parse(this.responseText);
+      let res;
+      try { res = JSON.parse(this.responseText); } catch (e) { alert('Invalid server response.'); return; }
+
       if (res.status === 'success') {
-        document.getElementById('name').textContent = res.full_name;
-        document.getElementById('enteredJambNo').textContent = jambNo.toUpperCase();
-        document.getElementById('score').textContent = res.score;
+        currentJambNo = jambNo.toUpperCase();
+        document.getElementById('name').textContent = res.full_name || '';
+        document.getElementById('enteredJambNo').textContent = currentJambNo;
+        document.getElementById('score').textContent = res.score ?? '';
         showStep(2);
       } else {
-        alert(res.message);
+        alert(res.message || 'Not eligible.');
       }
     } else { alert('Server error.'); }
   };
@@ -92,16 +96,19 @@ function checkEligibility() {
 }
 
 function goToLogin() {
-  document.getElementById('loginJamb').value = document.getElementById('enteredJambNo').textContent;
-  showStep(3);
+  const jamb = currentJambNo || document.getElementById('enteredJambNo').textContent.trim();
+  if (!jamb) { alert('No JAMB number available to send.'); return; }
+  // Redirect to login.php with jambNo prefilled in query string
+  window.location.href = 'login.php?jambNo=' + encodeURIComponent(jamb);
 }
 
 function loginPortal() {
+  // fallback inline login (optional)
   const jambNo = document.getElementById('loginJamb').value.trim();
   const pass = document.getElementById('loginPass').value.trim();
 
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', './ajax/login_candidate.php', true);
+  xhr.open('POST', '../ajax/login_candidate.php', true);
   xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
   xhr.onload = function() {
     if (this.status === 200) {
@@ -121,6 +128,7 @@ function logout() {
   showStep(1);
   document.getElementById('jambNo').value = "";
   document.getElementById('loginPass').value = "";
+  currentJambNo = '';
 }
 
 function showStep(num) {
