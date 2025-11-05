@@ -73,7 +73,7 @@ function checkEligibility() {
 
   // AJAX request
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', '../ajax/fetch_candidate.php', true);
+  xhr.open('POST', './ajax/fetch_candidate.php', true);
   xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
   xhr.onload = function() {
     if (this.status === 200) {
@@ -101,7 +101,7 @@ function loginPortal() {
   const pass = document.getElementById('loginPass').value.trim();
 
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', '../ajax/login_candidate.php', true);
+  xhr.open('POST', './ajax/login_candidate.php', true);
   xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
   xhr.onload = function() {
     if (this.status === 200) {
