@@ -10,171 +10,6 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $utme = $_SESSION['user_id'];
-$error = '';
-$success = '';
-
-/**
- * Generate unique application id like DAKO-UTME-1234567
- */
-function generateAppId($db) {
-    do {
-        $id = 'DAKO-UTME-' . str_pad((string) random_int(0, 9999999), 7, '0', STR_PAD_LEFT);
-        $exists = $db->select("SELECT app_id FROM utme_applications WHERE app_id = :id LIMIT 1", [':id' => $id]);
-    } while (!empty($exists));
-    return $id;
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application'])) {
-    // collect personal info with safe defaults to avoid trim(null) deprecation
-    $dob = trim((string)($_POST['dob'] ?? ''));
-    $phone = trim((string)($_POST['phone'] ?? ''));
-    $gender = trim((string)($_POST['gender'] ?? ''));
-    $marital_status = trim((string)($_POST['marital_status'] ?? ''));
-    $blood_group = trim((string)($_POST['blood_group'] ?? ''));
-    $present_address = trim((string)($_POST['present_address'] ?? ''));
-    $permanent_address = trim((string)($_POST['permanent_address'] ?? ''));
-    $state = trim((string)($_POST['state'] ?? ''));
-    $lga = trim((string)($_POST['lga'] ?? ''));
-
-    // parent info
-    $guardian_name = trim((string)($_POST['guardian_name'] ?? ''));
-    $guardian_occupation = trim((string)($_POST['guardian_occupation'] ?? ''));
-    $mother_name = trim((string)($_POST['mother_name'] ?? ''));
-    $mother_occupation = trim((string)($_POST['mother_occupation'] ?? ''));
-    $guardian_address = trim((string)($_POST['guardian_address'] ?? ''));
-    $parent_phone = trim((string)($_POST['parent_phone'] ?? ''));
-
-    // education
-    $sitting = trim((string)($_POST['sitting'] ?? ''));
-    $exam_type = trim((string)($_POST['exam_type'] ?? ''));
-    $exam_year = trim((string)($_POST['exam_year'] ?? ''));
-    $exam_no = trim((string)($_POST['exam_no'] ?? ''));
-    $exam_date = trim((string)($_POST['exam_date'] ?? ''));
-    $scratch_pin = trim((string)($_POST['scratch_pin'] ?? ''));
-    $scratch_serial = trim((string)($_POST['scratch_serial'] ?? ''));
-
-    // subjects and grades arrays (normalize)
-    $subjects = [];
-    if (!empty($_POST['subject']) && is_array($_POST['subject'])) {
-        foreach ($_POST['subject'] as $i => $sub) {
-            $s = trim((string)($sub ?? ''));
-            $g = trim((string)($_POST['grade'][$i] ?? ''));
-            if ($s !== '') $subjects[] = ['subject' => $s, 'grade' => $g];
-        }
-    }
-
-    // simple validation: require dob and phone
-    if ($dob === '' || $phone === '') {
-        $error = 'Please provide date of birth and phone number.';
-    } else {
-        try {
-            // personal info insert/update
-            $exists = $db->select("SELECT info_id FROM utme_personal_info WHERE utme_id = :uid LIMIT 1", [':uid' => $utme]);
-            if (!empty($exists)) {
-                $db->execute(
-                    "UPDATE utme_personal_info SET dob = :dob, phone = :phone, gender = :gender, marital_status = :marital, blood_group = :bg,
-                     present_address = :present, permanent_address = :permanent, state = :state, lga = :lga, created_at = NOW()
-                     WHERE utme_id = :uid",
-                    [
-                        ':dob' => $dob, ':phone' => $phone, ':gender' => $gender, ':marital' => $marital_status,
-                        ':bg' => $blood_group, ':present' => $present_address, ':permanent' => $permanent_address,
-                        ':state' => $state, ':lga' => $lga, ':uid' => $utme
-                    ]
-                );
-            } else {
-                $db->execute(
-                    "INSERT INTO utme_personal_info (utme_id, dob, phone, gender, marital_status, blood_group, present_address, permanent_address, state, lga, created_at)
-                     VALUES (:uid, :dob, :phone, :gender, :marital, :bg, :present, :permanent, :state, :lga, NOW())",
-                    [
-                        ':uid' => $utme, ':dob' => $dob, ':phone' => $phone, ':gender' => $gender, ':marital' => $marital_status,
-                        ':bg' => $blood_group, ':present' => $present_address, ':permanent' => $permanent_address,
-                        ':state' => $state, ':lga' => $lga
-                    ]
-                );
-            }
-
-            // parent info insert/update
-            $pexists = $db->select("SELECT parent_id FROM utme_parent_info WHERE utme_id = :uid LIMIT 1", [':uid' => $utme]);
-            if (!empty($pexists)) {
-                $db->execute(
-                    "UPDATE utme_parent_info SET guardian_name = :gn, occupation = :occ, mother_name = :mn, mother_occupation = :mo, guardian_address = :addr, phone = :ph, created_at = NOW()
-                     WHERE utme_id = :uid",
-                    [':gn' => $guardian_name, ':occ' => $guardian_occupation, ':mn' => $mother_name, ':mo' => $mother_occupation, ':addr' => $guardian_address, ':ph' => $parent_phone, ':uid' => $utme]
-                );
-            } else {
-                $db->execute(
-                    "INSERT INTO utme_parent_info (utme_id, guardian_name, occupation, mother_name, mother_occupation, guardian_address, phone, created_at)
-                     VALUES (:uid, :gn, :occ, :mn, :mo, :addr, :ph, NOW())",
-                    [':uid' => $utme, ':gn' => $guardian_name, ':occ' => $guardian_occupation, ':mn' => $mother_name, ':mo' => $mother_occupation, ':addr' => $guardian_address, ':ph' => $parent_phone]
-                );
-            }
-
-            // educational background insert/update
-            $subjects_json = json_encode(array_values($subjects), JSON_UNESCAPED_UNICODE);
-            $eexists = $db->select("SELECT edu_id FROM utme_educational_background WHERE utme_id = :uid LIMIT 1", [':uid' => $utme]);
-            if (!empty($eexists)) {
-                $db->execute(
-                    "UPDATE utme_educational_background SET sitting = :sitting, exam_type = :etype, exam_year = :eyear, exam_no = :eno, exam_date = :edate,
-                     scratch_pin = :pin, scratch_serial = :serial, subjects_json = :subs, created_at = NOW() WHERE utme_id = :uid",
-                    [':sitting' => $sitting, ':etype' => $exam_type, ':eyear' => $exam_year, ':eno' => $exam_no, ':edate' => $exam_date, ':pin' => $scratch_pin, ':serial' => $scratch_serial, ':subs' => $subjects_json, ':uid' => $utme]
-                );
-            } else {
-                $db->execute(
-                    "INSERT INTO utme_educational_background (utme_id, sitting, exam_type, exam_year, exam_no, exam_date, scratch_pin, scratch_serial, subjects_json, created_at)
-                     VALUES (:uid, :sitting, :etype, :eyear, :eno, :edate, :pin, :serial, :subs, NOW())",
-                    [':uid' => $utme, ':sitting' => $sitting, ':etype' => $exam_type, ':eyear' => $exam_year, ':eno' => $exam_no, ':edate' => $exam_date, ':pin' => $scratch_pin, ':serial' => $scratch_serial, ':subs' => $subjects_json]
-                );
-            }
-
-            // handle documents upload to uploads/utme/
-            $uploadBase = __DIR__ . '/../../uploads/utme/';
-            if (!file_exists($uploadBase)) mkdir($uploadBase, 0777, true);
-
-            $allowedExt = ['jpg', 'jpeg', 'png', 'pdf'];
-            $maxBytes = 2 * 1024 * 1024; // 2MB
-
-            if (!empty($_FILES['documents']['name']) && is_array($_FILES['documents']['name'])) {
-                foreach ($_FILES['documents']['name'] as $i => $name) {
-                    if (empty($name)) continue;
-                    $tmp = $_FILES['documents']['tmp_name'][$i] ?? null;
-                    $size = $_FILES['documents']['size'][$i] ?? 0;
-                    $docType = trim((string)($_POST['doc_type'][$i] ?? 'document'));
-                    $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-                    if (!in_array($ext, $allowedExt, true)) continue;
-                    if ($size > $maxBytes) continue;
-                    $safe = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', pathinfo($name, PATHINFO_FILENAME));
-                    $destName = $utme . '_' . $docType . '_' . time() . '_' . $i . '.' . $ext;
-                    $dest = $uploadBase . $destName;
-                    if ($tmp && is_uploaded_file($tmp) && move_uploaded_file($tmp, $dest)) {
-                        $db->execute(
-                            "INSERT INTO utme_documents (utme_id, doc_type, file_path, uploaded_at) VALUES (:uid, :dtype, :path, NOW())",
-                            [':uid' => $utme, ':dtype' => $docType, ':path' => 'uploads/utme/' . $destName]
-                        );
-                    }
-                }
-            }
-
-            // create application record (no course selection — store NULL)
-            $app_id = generateAppId($db);
-            $payment_status = 'unpaid';
-            $admission_status = 'pending';
-            $acceptance_status = 'unpaid';
-
-            $db->execute(
-                "INSERT INTO utme_applications (app_id, utme_id, course_id, payment_status, admission_status, acceptance_status, session, created_at)
-                 VALUES (:app_id, :uid, :course_id, :pay, :adm, :acc, :session, NOW())",
-                [':app_id' => $app_id, ':uid' => $utme, ':course_id' => null, ':pay' => $payment_status, ':adm' => $admission_status, ':acc' => $acceptance_status, ':session' => null]
-            );
-
-            $success = 'Application started successfully. Your Application ID: ' . $app_id . '.';
-            header("Refresh:2; url=admission-status.php");
-            exit();
-        } catch (Exception $e) {
-            $error = 'Failed to start application. Try again later.';
-            // optionally log $e->getMessage()
-        }
-    }
-}
 ?>
 <!doctype html>
 <html lang="en">
@@ -184,26 +19,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application']))
   <title>Online Screening — Start Application</title>
   <link rel="stylesheet" href="../asset/css/dashboard.css" />
   <style>
+    .tabs { display: flex; margin-bottom: 16px; }
+    .tabs li { list-style: none; padding: 10px 20px; cursor: pointer; background: #e6eef6; margin-right: 2px; border-radius: 8px 8px 0 0; }
+    .tabs li.active { background: var(--accent); color: #fff; }
+    .tab-content { display: none; border: 1px solid #e6eef6; border-radius: 0 0 10px 10px; padding: 20px; background: #fff; }
+    .tab-content.active { display: block; }
+    .msg { margin-top: 10px; color: green; }
+    .msg.error { color: red; }
+    .actions { display: flex; gap: 10px; margin-top: 12px; }
+    .btn { padding: 10px 14px; border-radius: 8px; cursor: pointer; border: none; background: var(--accent); color: #fff; }
+    .btn.secondary { background: #6b7280; }
     .form-section { background:#fff; padding:16px; border-radius:10px; box-shadow:0 6px 18px rgba(15,76,117,0.04); margin-bottom:16px; }
     .row { display:flex; gap:12px; flex-wrap:wrap; }
     .col { flex:1; min-width:200px; }
     label { display:block; font-weight:600; margin-bottom:6px; color:#334155; }
     input, select, textarea { width:100%; padding:10px; border-radius:6px; border:1px solid #e6eef6; }
-    .actions { display:flex; gap:10px; margin-top:12px; }
-    .btn { padding:10px 14px; border-radius:8px; cursor:pointer; border:none; background:var(--accent); color:#fff; }
-    .btn.secondary { background:#6b7280; }
-    .message { padding:12px; border-radius:8px; margin-bottom:12px; }
-    .message.success { background:#ecfdf5; color:#065f46; }
-    .message.error { background:#fff1f2; color:#7f1d1d; }
     .doc-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
     .doc-row select, .doc-row input[type="file"] { flex:1; }
     .doc-row .remove-btn { background:#ef4444; color:#fff; border:none; padding:8px 10px; border-radius:6px; cursor:pointer; }
     .doc-actions { margin-top:8px; }
   </style>
-  <script defer>
+  <script>
+    function showTab(tab) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.querySelectorAll('.tabs li').forEach(el => el.classList.remove('active'));
+      document.getElementById('tabbtn-' + tab).classList.add('active');
+    }
+
+    function saveSection(section) {
+      let form = document.getElementById('form-' + section);
+      let msg = document.getElementById('msg-' + section);
+      msg.textContent = '';
+      let formData = new FormData(form);
+
+      fetch('ajax/save_' + section + '.php', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        if(data.status === 'success') {
+          msg.textContent = 'Saved!';
+          msg.className = 'msg';
+        } else {
+          msg.textContent = data.message || 'Error saving data.';
+          msg.className = 'msg error';
+        }
+      })
+      .catch(() => {
+        msg.textContent = 'Network error.';
+        msg.className = 'msg error';
+      });
+    }
+
+    // Document and Subject row logic (copied from your original script)
     function addDocumentRow() {
       const wrap = document.getElementById('docsWrap');
-      const idx = wrap.children.length;
       const row = document.createElement('div');
       row.className = 'doc-row';
       row.innerHTML = `
@@ -254,7 +126,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application']))
         <button id="toggleSidebar" class="toggle-btn">☰</button>
         <div class="user-info">
           <?php
-            // try fetch name for display
             $candidateRow = $db->select("SELECT surname, first_name FROM utme_candidates WHERE utme_id = :id LIMIT 1", [':id' => $utme]);
             $displayName = $candidateRow[0]['surname'] ?? $candidateRow[0]['first_name'] ?? $utme;
           ?>
@@ -266,25 +137,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application']))
       <section class="content">
         <h1>Online Screening & Admission Application</h1>
 
-        <?php if ($error): ?>
-          <div class="message error"><?php echo htmlspecialchars($error); ?></div>
-        <?php endif; ?>
-        <?php if ($success): ?>
-          <div class="message success"><?php echo htmlspecialchars($success); ?></div>
-        <?php endif; ?>
+        <!-- Multi-tab navigation -->
+        <ul class="tabs">
+          <li id="tabbtn-personal" class="active" onclick="showTab('personal')">Personal Info</li>
+          <li id="tabbtn-parent" onclick="showTab('parent')">Parent / Guardian</li>
+          <li id="tabbtn-education" onclick="showTab('education')">Educational Background</li>
+          <li id="tabbtn-documents" onclick="showTab('documents')">Documents</li>
+        </ul>
 
-        <form method="post" enctype="multipart/form-data" id="screeningForm">
-          <div class="form-section">
-            <h3>Application Options</h3>
-            <div class="row">
-              <div class="col">
-                <p style="color:var(--muted)">You will select your preferred course later in the application flow. For now complete your personal, education and document details.</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <h3>Personal Information</h3>
+        <!-- Personal Info Tab -->
+        <div id="tab-personal" class="tab-content active">
+          <form id="form-personal" class="form-section">
             <div class="row">
               <div class="col">
                 <label for="dob">Date of birth</label>
@@ -303,7 +166,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application']))
                 </select>
               </div>
             </div>
-
             <div class="row" style="margin-top:8px">
               <div class="col">
                 <label for="present_address">Present address</label>
@@ -314,7 +176,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application']))
                 <textarea id="permanent_address" name="permanent_address" rows="2"></textarea>
               </div>
             </div>
-
             <div class="row" style="margin-top:8px">
               <div class="col">
                 <label for="state">State</label>
@@ -329,10 +190,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application']))
                 <input id="blood_group" name="blood_group" type="text" />
               </div>
             </div>
-          </div>
+            <div class="actions">
+              <button type="button" class="btn" onclick="saveSection('personal')">Save</button>
+            </div>
+            <span id="msg-personal" class="msg"></span>
+          </form>
+        </div>
 
-          <div class="form-section">
-            <h3>Parent / Guardian</h3>
+        <!-- Parent / Guardian Tab -->
+        <div id="tab-parent" class="tab-content">
+          <form id="form-parent" class="form-section">
             <div class="row">
               <div class="col">
                 <label for="guardian_name">Guardian name</label>
@@ -363,10 +230,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application']))
                 <input id="parent_phone" name="parent_phone" type="text" />
               </div>
             </div>
-          </div>
+            <div class="actions">
+              <button type="button" class="btn" onclick="saveSection('parent')">Save</button>
+            </div>
+            <span id="msg-parent" class="msg"></span>
+          </form>
+        </div>
 
-          <div class="form-section" id="educationSection">
-            <h3>Educational Background</h3>
+        <!-- Educational Background Tab -->
+        <div id="tab-education" class="tab-content">
+          <form id="form-education" class="form-section">
             <div class="row">
               <div class="col">
                 <label for="sitting">Sitting</label>
@@ -394,7 +267,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application']))
               <div class="col"><label for="exam_no">Exam Number</label><input id="exam_no" name="exam_no" type="text" /></div>
               <div class="col"><label for="exam_date">Exam Date</label><input id="exam_date" name="exam_date" type="date" /></div>
             </div>
-
             <h4 style="margin-top:12px">Subjects & Grades</h4>
             <div id="subjectsWrap">
               <div class="row subject-row">
@@ -404,28 +276,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['start_application']))
               </div>
             </div>
             <div style="margin-top:8px"><button type="button" class="btn" onclick="addSubject()">Add subject</button></div>
-          </div>
+            <div class="actions">
+              <button type="button" class="btn" onclick="saveSection('education')">Save</button>
+            </div>
+            <span id="msg-education" class="msg"></span>
+          </form>
+        </div>
 
-          <div class="form-section">
-            <h3>Documents</h3>
+        <!-- Documents Tab -->
+        <div id="tab-documents" class="tab-content">
+          <form id="form-documents" class="form-section" enctype="multipart/form-data">
             <div id="docsWrap"></div>
             <div class="doc-actions">
               <button type="button" class="btn" onclick="addDocumentRow()">Add document</button>
               <div style="margin-top:8px;color:var(--muted);font-size:13px">Allowed types: jpg, png, pdf. Max size per file: 2MB.</div>
             </div>
-          </div>
-
-          <div class="actions">
-            <button type="submit" name="start_application" class="btn">Start Admission Application</button>
-            <button type="reset" class="btn secondary">Reset</button>
-          </div>
-        </form>
+            <div class="actions">
+              <button type="button" class="btn" onclick="saveSection('documents')">Save</button>
+            </div>
+            <span id="msg-documents" class="msg"></span>
+          </form>
+        </div>
 
       </section>
-
       <?php include_once __DIR__ . '/../include/footer.php'; ?>
     </main>
   </div>
-
 </body>
 </html>
