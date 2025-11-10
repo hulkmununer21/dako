@@ -53,7 +53,7 @@ $utme = $_SESSION['user_id'];
       msg.textContent = '';
       let formData = new FormData(form);
 
-      fetch('ajax/save_' + section + '.php', {
+      fetch('../ajax/save_' + section + '.php', {
         method: 'POST',
         body: formData
       })
