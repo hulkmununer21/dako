@@ -10,6 +10,21 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $utme = $_SESSION['user_id'];
+
+// Fetch personal info from DB
+$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+$personal = [];
+if ($conn->connect_error) {
+    $personal = [];
+} else {
+    $stmt = $conn->prepare("SELECT * FROM utme_personal_info WHERE utme_id=? LIMIT 1");
+    $stmt->bind_param("s", $utme);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $personal = $result->fetch_assoc() ?: [];
+    $stmt->close();
+    $conn->close();
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -29,15 +44,6 @@ $utme = $_SESSION['user_id'];
     .actions { display: flex; gap: 10px; margin-top: 12px; }
     .btn { padding: 10px 14px; border-radius: 8px; cursor: pointer; border: none; background: var(--accent); color: #fff; }
     .btn.secondary { background: #6b7280; }
-    .form-section { background:#fff; padding:16px; border-radius:10px; box-shadow:0 6px 18px rgba(15,76,117,0.04); margin-bottom:16px; }
-    .row { display:flex; gap:12px; flex-wrap:wrap; }
-    .col { flex:1; min-width:200px; }
-    label { display:block; font-weight:600; margin-bottom:6px; color:#334155; }
-    input, select, textarea { width:100%; padding:10px; border-radius:6px; border:1px solid #e6eef6; }
-    .doc-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
-    .doc-row select, .doc-row input[type="file"] { flex:1; }
-    .doc-row .remove-btn { background:#ef4444; color:#fff; border:none; padding:8px 10px; border-radius:6px; cursor:pointer; }
-    .doc-actions { margin-top:8px; }
   </style>
   <script>
     function showTab(tab) {
@@ -53,7 +59,7 @@ $utme = $_SESSION['user_id'];
       msg.textContent = '';
       let formData = new FormData(form);
 
-      fetch('/ajax/save_' + section + '.php', {
+      fetch('ajax/save_' + section + '.php', {
         method: 'POST',
         body: formData
       })
@@ -72,48 +78,6 @@ $utme = $_SESSION['user_id'];
         msg.className = 'msg error';
       });
     }
-
-    // Document and Subject row logic (copied from your original script)
-    function addDocumentRow() {
-      const wrap = document.getElementById('docsWrap');
-      const row = document.createElement('div');
-      row.className = 'doc-row';
-      row.innerHTML = `
-        <select name="doc_type[]" required>
-          <option value="">-- Select document type --</option>
-          <option value="birth_certificate">Birth Certificate</option>
-          <option value="indigene_certificate">Indigene Certificate</option>
-          <option value="ssce_result">SSCE Result</option>
-          <option value="scratch_card_image">Scratch Card Image</option>
-          <option value="primary_school_testimonial">Primary School Testimonial</option>
-          <option value="secondary_school_testimonial">Secondary School Testimonial</option>
-          <option value="marriage_certificate">Marriage Certificate</option>
-        </select>
-        <input type="file" name="documents[]" accept=".jpg,.jpeg,.png,.pdf" required />
-        <button type="button" class="remove-btn" onclick="removeDocumentRow(this)">Remove</button>
-      `;
-      wrap.appendChild(row);
-    }
-    function removeDocumentRow(btn) {
-      const row = btn.closest('.doc-row');
-      if (row) row.remove();
-    }
-    document.addEventListener('DOMContentLoaded', function(){
-      if (!document.getElementById('docsWrap').children.length) addDocumentRow();
-    });
-    function addSubject() {
-      const wrap = document.getElementById('subjectsWrap');
-      const row = document.createElement('div');
-      row.className = 'row subject-row';
-      row.innerHTML = `<div class="col"><input name="subject[]" placeholder="Subject" /></div>
-                       <div class="col"><input name="grade[]" placeholder="Grade" /></div>
-                       <div class="col" style="max-width:90px"><button type="button" class="btn secondary" onclick="removeSubject(this)">Remove</button></div>`;
-      wrap.appendChild(row);
-    }
-    function removeSubject(btn) {
-      const row = btn.closest('.subject-row');
-      if (row) row.remove();
-    }
   </script>
 </head>
 <body>
@@ -126,8 +90,8 @@ $utme = $_SESSION['user_id'];
         <button id="toggleSidebar" class="toggle-btn">☰</button>
         <div class="user-info">
           <?php
-            $candidateRow = $db->select("SELECT surname, first_name FROM utme_candidates WHERE utme_id = :id LIMIT 1", [':id' => $utme]);
-            $displayName = $candidateRow[0]['surname'] ?? $candidateRow[0]['first_name'] ?? $utme;
+            $candidateRow = $personal;
+            $displayName = $candidateRow['surname'] ?? $candidateRow['first_name'] ?? $utme;
           ?>
           <div class="name"><?php echo htmlspecialchars($displayName); ?></div>
           <div class="meta">UTME No: <?php echo htmlspecialchars($utme); ?></div>
@@ -140,9 +104,7 @@ $utme = $_SESSION['user_id'];
         <!-- Multi-tab navigation -->
         <ul class="tabs">
           <li id="tabbtn-personal" class="active" onclick="showTab('personal')">Personal Info</li>
-          <li id="tabbtn-parent" onclick="showTab('parent')">Parent / Guardian</li>
-          <li id="tabbtn-education" onclick="showTab('education')">Educational Background</li>
-          <li id="tabbtn-documents" onclick="showTab('documents')">Documents</li>
+          <!-- Add other tabs as needed -->
         </ul>
 
         <!-- Personal Info Tab -->
@@ -151,150 +113,49 @@ $utme = $_SESSION['user_id'];
             <div class="row">
               <div class="col">
                 <label for="dob">Date of birth</label>
-                <input id="dob" name="dob" type="date" required />
+                <input id="dob" name="dob" type="date" required value="<?php echo htmlspecialchars($personal['dob'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="phone">Phone</label>
-                <input id="phone" name="phone" type="text" required />
+                <input id="phone" name="phone" type="text" required value="<?php echo htmlspecialchars($personal['phone'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="gender">Gender</label>
                 <select id="gender" name="gender">
                   <option value="">--</option>
-                  <option>Male</option>
-                  <option>Female</option>
+                  <option value="Male" <?php if(($personal['gender'] ?? '')=='Male') echo 'selected'; ?>>Male</option>
+                  <option value="Female" <?php if(($personal['gender'] ?? '')=='Female') echo 'selected'; ?>>Female</option>
                 </select>
               </div>
             </div>
             <div class="row" style="margin-top:8px">
               <div class="col">
                 <label for="present_address">Present address</label>
-                <textarea id="present_address" name="present_address" rows="2"></textarea>
+                <textarea id="present_address" name="present_address" rows="2"><?php echo htmlspecialchars($personal['present_address'] ?? ''); ?></textarea>
               </div>
               <div class="col">
                 <label for="permanent_address">Permanent address</label>
-                <textarea id="permanent_address" name="permanent_address" rows="2"></textarea>
+                <textarea id="permanent_address" name="permanent_address" rows="2"><?php echo htmlspecialchars($personal['permanent_address'] ?? ''); ?></textarea>
               </div>
             </div>
             <div class="row" style="margin-top:8px">
               <div class="col">
                 <label for="state">State</label>
-                <input id="state" name="state" type="text" />
+                <input id="state" name="state" type="text" value="<?php echo htmlspecialchars($personal['state'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="lga">LGA</label>
-                <input id="lga" name="lga" type="text" />
+                <input id="lga" name="lga" type="text" value="<?php echo htmlspecialchars($personal['lga'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="blood_group">Blood group</label>
-                <input id="blood_group" name="blood_group" type="text" />
+                <input id="blood_group" name="blood_group" type="text" value="<?php echo htmlspecialchars($personal['blood_group'] ?? ''); ?>" />
               </div>
             </div>
             <div class="actions">
               <button type="button" class="btn" onclick="saveSection('personal')">Save</button>
             </div>
             <span id="msg-personal" class="msg"></span>
-          </form>
-        </div>
-
-        <!-- Parent / Guardian Tab -->
-        <div id="tab-parent" class="tab-content">
-          <form id="form-parent" class="form-section">
-            <div class="row">
-              <div class="col">
-                <label for="guardian_name">Guardian name</label>
-                <input id="guardian_name" name="guardian_name" type="text" />
-              </div>
-              <div class="col">
-                <label for="guardian_occupation">Guardian occupation</label>
-                <input id="guardian_occupation" name="guardian_occupation" type="text" />
-              </div>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <div class="col">
-                <label for="mother_name">Mother name</label>
-                <input id="mother_name" name="mother_name" type="text" />
-              </div>
-              <div class="col">
-                <label for="mother_occupation">Mother occupation</label>
-                <input id="mother_occupation" name="mother_occupation" type="text" />
-              </div>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <div class="col">
-                <label for="guardian_address">Guardian address</label>
-                <input id="guardian_address" name="guardian_address" type="text" />
-              </div>
-              <div class="col">
-                <label for="parent_phone">Parent / Guardian phone</label>
-                <input id="parent_phone" name="parent_phone" type="text" />
-              </div>
-            </div>
-            <div class="actions">
-              <button type="button" class="btn" onclick="saveSection('parent')">Save</button>
-            </div>
-            <span id="msg-parent" class="msg"></span>
-          </form>
-        </div>
-
-        <!-- Educational Background Tab -->
-        <div id="tab-education" class="tab-content">
-          <form id="form-education" class="form-section">
-            <div class="row">
-              <div class="col">
-                <label for="sitting">Sitting</label>
-                <select id="sitting" name="sitting">
-                  <option value="">-- Select --</option>
-                  <option value="1 sitting">1 sitting</option>
-                  <option value="2 sittings">2 sittings</option>
-                </select>
-              </div>
-              <div class="col">
-                <label for="exam_type">Exam Type</label>
-                <select id="exam_type" name="exam_type">
-                  <option value="">-- Select --</option>
-                  <option value="WAEC">WAEC</option>
-                  <option value="NECO">NECO</option>
-                  <option value="NABTEB">NABTEB</option>
-                </select>
-              </div>
-              <div class="col">
-                <label for="exam_year">Year</label>
-                <input id="exam_year" name="exam_year" type="text" />
-              </div>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <div class="col"><label for="exam_no">Exam Number</label><input id="exam_no" name="exam_no" type="text" /></div>
-              <div class="col"><label for="exam_date">Exam Date</label><input id="exam_date" name="exam_date" type="date" /></div>
-            </div>
-            <h4 style="margin-top:12px">Subjects & Grades</h4>
-            <div id="subjectsWrap">
-              <div class="row subject-row">
-                <div class="col"><input name="subject[]" placeholder="Subject" /></div>
-                <div class="col"><input name="grade[]" placeholder="Grade" /></div>
-                <div class="col" style="max-width:90px"><button type="button" class="btn secondary" onclick="removeSubject(this)">Remove</button></div>
-              </div>
-            </div>
-            <div style="margin-top:8px"><button type="button" class="btn" onclick="addSubject()">Add subject</button></div>
-            <div class="actions">
-              <button type="button" class="btn" onclick="saveSection('education')">Save</button>
-            </div>
-            <span id="msg-education" class="msg"></span>
-          </form>
-        </div>
-
-        <!-- Documents Tab -->
-        <div id="tab-documents" class="tab-content">
-          <form id="form-documents" class="form-section" enctype="multipart/form-data">
-            <div id="docsWrap"></div>
-            <div class="doc-actions">
-              <button type="button" class="btn" onclick="addDocumentRow()">Add document</button>
-              <div style="margin-top:8px;color:var(--muted);font-size:13px">Allowed types: jpg, png, pdf. Max size per file: 2MB.</div>
-            </div>
-            <div class="actions">
-              <button type="button" class="btn" onclick="saveSection('documents')">Save</button>
-            </div>
-            <span id="msg-documents" class="msg"></span>
           </form>
         </div>
 
