@@ -1,7 +1,7 @@
 <?php
 session_start();
-require_once '../../../includes/config.php';
-require_once '../../../includes/database.php';
+require_once '../includes/config.php';
+require_once '../includes/database.php';
 
 if (!isset($_SESSION['user_id'])) {
     echo json_encode(['status'=>'error','message'=>'Not authenticated']);
