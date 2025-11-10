@@ -1,4 +1,5 @@
 <?php
+<?php
 session_start();
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/database.php';
@@ -10,6 +11,51 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $utme = $_SESSION['user_id'];
+
+// Fetch all data for prefilling
+$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+$personal = [];
+$parent = [];
+$education = [];
+$documents = [];
+
+if (!$conn->connect_error) {
+    // Personal Info
+    $stmt = $conn->prepare("SELECT * FROM utme_personal_info WHERE utme_id=? LIMIT 1");
+    $stmt->bind_param("s", $utme);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $personal = $result->fetch_assoc() ?: [];
+    $stmt->close();
+
+    // Parent Info
+    $stmt = $conn->prepare("SELECT * FROM utme_parent_info WHERE utme_id=? LIMIT 1");
+    $stmt->bind_param("s", $utme);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $parent = $result->fetch_assoc() ?: [];
+    $stmt->close();
+
+    // Education
+    $stmt = $conn->prepare("SELECT * FROM utme_education_background WHERE utme_id=? LIMIT 1");
+    $stmt->bind_param("s", $utme);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $education = $result->fetch_assoc() ?: [];
+    $stmt->close();
+
+    // Documents
+    $stmt = $conn->prepare("SELECT doc_type, file_path FROM utme_documents WHERE utme_id=?");
+    $stmt->bind_param("s", $utme);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $documents[] = $row;
+    }
+    $stmt->close();
+
+    $conn->close();
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -38,6 +84,24 @@ $utme = $_SESSION['user_id'];
     .doc-row select, .doc-row input[type="file"] { flex:1; }
     .doc-row .remove-btn { background:#ef4444; color:#fff; border:none; padding:8px 10px; border-radius:6px; cursor:pointer; }
     .doc-actions { margin-top:8px; }
+    .uploaded-doc { margin-bottom: 6px; font-size: 14px; }
+    @media (max-width: 900px) {
+      .dashboard-root { flex-direction: column; }
+      .dashboard-main { padding: 8px; }
+      .main-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .tabs { flex-wrap: wrap; font-size: 15px; padding-left: 0; }
+      .tabs li { padding: 8px 12px; font-size: 15px; margin-bottom: 2px; border-radius: 8px; }
+      .tab-content { padding: 10px; }
+      .form-section { padding: 10px; }
+      .row { flex-direction: column; gap: 8px; }
+      .col { min-width: 100%; }
+      label { margin-bottom: 4px; font-size: 15px; }
+      input, select, textarea { font-size: 15px; padding: 8px; }
+      .actions { flex-direction: column; gap: 8px; }
+      .btn, .btn.secondary { width: 100%; font-size: 16px; padding: 10px 0; }
+      .doc-row { flex-direction: column; gap: 6px; }
+      .uploaded-doc { font-size: 13px; }
+    }
   </style>
   <script>
     function showTab(tab) {
@@ -73,7 +137,6 @@ $utme = $_SESSION['user_id'];
       });
     }
 
-    // Document and Subject row logic (copied from your original script)
     function addDocumentRow() {
       const wrap = document.getElementById('docsWrap');
       const row = document.createElement('div');
@@ -114,6 +177,27 @@ $utme = $_SESSION['user_id'];
       const row = btn.closest('.subject-row');
       if (row) row.remove();
     }
+
+    function deleteDocument(filePath, btn) {
+      if (!confirm('Are you sure you want to delete this document?')) return;
+      fetch('/ajax/delete_document.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'file_path=' + encodeURIComponent(filePath)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'success') {
+          const docDiv = btn.closest('.uploaded-doc');
+          if (docDiv) docDiv.remove();
+        } else {
+          alert(data.message || 'Error deleting document.');
+        }
+      })
+      .catch(() => {
+        alert('Network error.');
+      });
+    }
   </script>
 </head>
 <body>
@@ -126,8 +210,7 @@ $utme = $_SESSION['user_id'];
         <button id="toggleSidebar" class="toggle-btn">☰</button>
         <div class="user-info">
           <?php
-            $candidateRow = $db->select("SELECT surname, first_name FROM utme_candidates WHERE utme_id = :id LIMIT 1", [':id' => $utme]);
-            $displayName = $candidateRow[0]['surname'] ?? $candidateRow[0]['first_name'] ?? $utme;
+            $displayName = $personal['surname'] ?? $personal['first_name'] ?? $utme;
           ?>
           <div class="name"><?php echo htmlspecialchars($displayName); ?></div>
           <div class="meta">UTME No: <?php echo htmlspecialchars($utme); ?></div>
@@ -151,43 +234,43 @@ $utme = $_SESSION['user_id'];
             <div class="row">
               <div class="col">
                 <label for="dob">Date of birth</label>
-                <input id="dob" name="dob" type="date" required />
+                <input id="dob" name="dob" type="date" required value="<?php echo htmlspecialchars($personal['dob'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="phone">Phone</label>
-                <input id="phone" name="phone" type="text" required />
+                <input id="phone" name="phone" type="text" required value="<?php echo htmlspecialchars($personal['phone'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="gender">Gender</label>
                 <select id="gender" name="gender">
                   <option value="">--</option>
-                  <option>Male</option>
-                  <option>Female</option>
+                  <option value="Male" <?php if(($personal['gender'] ?? '')=='Male') echo 'selected'; ?>>Male</option>
+                  <option value="Female" <?php if(($personal['gender'] ?? '')=='Female') echo 'selected'; ?>>Female</option>
                 </select>
               </div>
             </div>
             <div class="row" style="margin-top:8px">
               <div class="col">
                 <label for="present_address">Present address</label>
-                <textarea id="present_address" name="present_address" rows="2"></textarea>
+                <textarea id="present_address" name="present_address" rows="2"><?php echo htmlspecialchars($personal['present_address'] ?? ''); ?></textarea>
               </div>
               <div class="col">
                 <label for="permanent_address">Permanent address</label>
-                <textarea id="permanent_address" name="permanent_address" rows="2"></textarea>
+                <textarea id="permanent_address" name="permanent_address" rows="2"><?php echo htmlspecialchars($personal['permanent_address'] ?? ''); ?></textarea>
               </div>
             </div>
             <div class="row" style="margin-top:8px">
               <div class="col">
                 <label for="state">State</label>
-                <input id="state" name="state" type="text" />
+                <input id="state" name="state" type="text" value="<?php echo htmlspecialchars($personal['state'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="lga">LGA</label>
-                <input id="lga" name="lga" type="text" />
+                <input id="lga" name="lga" type="text" value="<?php echo htmlspecialchars($personal['lga'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="blood_group">Blood group</label>
-                <input id="blood_group" name="blood_group" type="text" />
+                <input id="blood_group" name="blood_group" type="text" value="<?php echo htmlspecialchars($personal['blood_group'] ?? ''); ?>" />
               </div>
             </div>
             <div class="actions">
@@ -203,31 +286,31 @@ $utme = $_SESSION['user_id'];
             <div class="row">
               <div class="col">
                 <label for="guardian_name">Guardian name</label>
-                <input id="guardian_name" name="guardian_name" type="text" />
+                <input id="guardian_name" name="guardian_name" type="text" value="<?php echo htmlspecialchars($parent['guardian_name'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="guardian_occupation">Guardian occupation</label>
-                <input id="guardian_occupation" name="guardian_occupation" type="text" />
+                <input id="guardian_occupation" name="guardian_occupation" type="text" value="<?php echo htmlspecialchars($parent['occupation'] ?? ''); ?>" />
               </div>
             </div>
             <div class="row" style="margin-top:8px">
               <div class="col">
                 <label for="mother_name">Mother name</label>
-                <input id="mother_name" name="mother_name" type="text" />
+                <input id="mother_name" name="mother_name" type="text" value="<?php echo htmlspecialchars($parent['mother_name'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="mother_occupation">Mother occupation</label>
-                <input id="mother_occupation" name="mother_occupation" type="text" />
+                <input id="mother_occupation" name="mother_occupation" type="text" value="<?php echo htmlspecialchars($parent['mother_occupation'] ?? ''); ?>" />
               </div>
             </div>
             <div class="row" style="margin-top:8px">
               <div class="col">
                 <label for="guardian_address">Guardian address</label>
-                <input id="guardian_address" name="guardian_address" type="text" />
+                <input id="guardian_address" name="guardian_address" type="text" value="<?php echo htmlspecialchars($parent['guardian_address'] ?? ''); ?>" />
               </div>
               <div class="col">
                 <label for="parent_phone">Parent / Guardian phone</label>
-                <input id="parent_phone" name="parent_phone" type="text" />
+                <input id="parent_phone" name="parent_phone" type="text" value="<?php echo htmlspecialchars($parent['phone'] ?? ''); ?>" />
               </div>
             </div>
             <div class="actions">
@@ -245,35 +328,52 @@ $utme = $_SESSION['user_id'];
                 <label for="sitting">Sitting</label>
                 <select id="sitting" name="sitting">
                   <option value="">-- Select --</option>
-                  <option value="1 sitting">1 sitting</option>
-                  <option value="2 sittings">2 sittings</option>
+                  <option value="1" <?php if(($education['sitting'] ?? '')=='1') echo 'selected'; ?>>1 sitting</option>
+                  <option value="2" <?php if(($education['sitting'] ?? '')=='2') echo 'selected'; ?>>2 sittings</option>
                 </select>
               </div>
               <div class="col">
                 <label for="exam_type">Exam Type</label>
                 <select id="exam_type" name="exam_type">
                   <option value="">-- Select --</option>
-                  <option value="WAEC">WAEC</option>
-                  <option value="NECO">NECO</option>
-                  <option value="NABTEB">NABTEB</option>
+                  <option value="WAEC" <?php if(($education['exam_type'] ?? '')=='WAEC') echo 'selected'; ?>>WAEC</option>
+                  <option value="NECO" <?php if(($education['exam_type'] ?? '')=='NECO') echo 'selected'; ?>>NECO</option>
+                  <option value="NABTEB" <?php if(($education['exam_type'] ?? '')=='NABTEB') echo 'selected'; ?>>NABTEB</option>
                 </select>
               </div>
               <div class="col">
                 <label for="exam_year">Year</label>
-                <input id="exam_year" name="exam_year" type="text" />
+                <input id="exam_year" name="exam_year" type="text" value="<?php echo htmlspecialchars($education['exam_year'] ?? ''); ?>" />
               </div>
             </div>
             <div class="row" style="margin-top:8px">
-              <div class="col"><label for="exam_no">Exam Number</label><input id="exam_no" name="exam_no" type="text" /></div>
-              <div class="col"><label for="exam_date">Exam Date</label><input id="exam_date" name="exam_date" type="date" /></div>
+              <div class="col"><label for="exam_no">Exam Number</label><input id="exam_no" name="exam_no" type="text" value="<?php echo htmlspecialchars($education['exam_no'] ?? ''); ?>" /></div>
+              <div class="col"><label for="exam_date">Exam Date</label><input id="exam_date" name="exam_date" type="date" value="<?php echo htmlspecialchars($education['exam_date'] ?? ''); ?>" /></div>
             </div>
             <h4 style="margin-top:12px">Subjects & Grades</h4>
             <div id="subjectsWrap">
-              <div class="row subject-row">
-                <div class="col"><input name="subject[]" placeholder="Subject" /></div>
-                <div class="col"><input name="grade[]" placeholder="Grade" /></div>
-                <div class="col" style="max-width:90px"><button type="button" class="btn secondary" onclick="removeSubject(this)">Remove</button></div>
-              </div>
+              <?php
+                $subjects = [];
+                if (!empty($education['subjects_json'])) {
+                  $subjects = json_decode($education['subjects_json'], true);
+                }
+                if ($subjects) {
+                  foreach ($subjects as $subj) {
+                    echo '<div class="row subject-row">';
+                    echo '<div class="col"><input name="subject[]" placeholder="Subject" value="'.htmlspecialchars($subj['subject']).'" /></div>';
+                    echo '<div class="col"><input name="grade[]" placeholder="Grade" value="'.htmlspecialchars($subj['grade']).'" /></div>';
+                    echo '<div class="col" style="max-width:90px"><button type="button" class="btn secondary" onclick="removeSubject(this)">Remove</button></div>';
+                    echo '</div>';
+                  }
+                } else {
+                  // Show one empty row
+                  echo '<div class="row subject-row">';
+                  echo '<div class="col"><input name="subject[]" placeholder="Subject" /></div>';
+                  echo '<div class="col"><input name="grade[]" placeholder="Grade" /></div>';
+                  echo '<div class="col" style="max-width:90px"><button type="button" class="btn secondary" onclick="removeSubject(this)">Remove</button></div>';
+                  echo '</div>';
+                }
+              ?>
             </div>
             <div style="margin-top:8px"><button type="button" class="btn" onclick="addSubject()">Add subject</button></div>
             <div class="actions">
@@ -286,6 +386,19 @@ $utme = $_SESSION['user_id'];
         <!-- Documents Tab -->
         <div id="tab-documents" class="tab-content">
           <form id="form-documents" class="form-section" enctype="multipart/form-data">
+            <div>
+              <?php
+                if ($documents) {
+                  foreach ($documents as $doc) {
+                    echo '<div class="uploaded-doc" id="doc-'.md5($doc['file_path']).'">';
+                    echo '<strong>'.ucwords(str_replace('_',' ', $doc['doc_type'])).':</strong> ';
+                    echo '<a href="/uploads/utme_documents/'.htmlspecialchars($doc['file_path']).'" target="_blank">View</a> ';
+                    echo '<button type="button" class="btn secondary" style="margin-left:8px" onclick="deleteDocument(\''.addslashes($doc['file_path']).'\', this)">Delete</button>';
+                    echo '</div>';
+                  }
+                }
+              ?>
+            </div>
             <div id="docsWrap"></div>
             <div class="doc-actions">
               <button type="button" class="btn" onclick="addDocumentRow()">Add document</button>
