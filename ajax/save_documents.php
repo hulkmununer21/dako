@@ -12,7 +12,7 @@ $utme_id = $_SESSION['user_id'];
 $doc_types = $_POST['doc_type'] ?? [];
 $files = $_FILES['documents'] ?? null;
 
-$upload_dir = '../../../uploads/utme_documents/';
+$upload_dir = '../uploads/utme_documents/';
 if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
 
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
